@@ -1,6 +1,7 @@
 """
 Page 2 — Agents
-Constellation des 14 agents avec votes, consensus et Deep Dive par agent.
+Constellation des 14 agents avec votes réels, consensus et Deep Dive par agent.
+Utilise l'état partagé de session (last_votes, last_agg, last_market).
 """
 from __future__ import annotations
 import sys, os
@@ -9,246 +10,179 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 import pandas as pd
 
-from agents.registry import build_default_agents, aggregate_votes, AgentVote
-from agents.indicators import (
-    MarketState, rsi, macd, atr, sma, realized_volatility, structural_score
-)
-from core.live_market import MockMarketFeed, LiveMarketFeed
-
 st.set_page_config(page_title="Agents — Obsidia", page_icon="🧠", layout="wide")
 
 st.title("🧠 Constellation des 14 Agents")
-st.caption("Chaque agent analyse le marché de façon indépendante. Le consensus détermine la direction.")
+st.caption("Chaque agent vote indépendamment. Le Guard X-108 valide le consensus avant tout trade.")
 
-# ─── Initialisation ──────────────────────────────────────────────────────────
-if "agents" not in st.session_state:
-    st.session_state.agents = build_default_agents()
+# ─── Vérification état session ───────────────────────────────────────────────
+if "last_votes" not in st.session_state or not st.session_state.last_votes:
+    st.warning("⚠️ Aucun vote disponible. Lancez l'agent depuis la page **Home** (▶ Run).")
+    st.info("💡 Allez sur la page **Home**, cliquez **▶ Run**, puis revenez ici.")
+    st.stop()
 
-sim_mode = st.session_state.get("sim_mode", True)
-drift_bias = st.session_state.get("drift_bias", 0.0)
-vol_mult = st.session_state.get("vol_mult", 1.0)
+votes = st.session_state.last_votes
+agg = st.session_state.get("last_agg", {})
+market = st.session_state.get("last_market")
+guard_result = st.session_state.get("last_decision")
+history = st.session_state.get("history", [])
 
-# ─── Récupération du marché ───────────────────────────────────────────────────
-@st.cache_data(ttl=2)
-def get_market(sim: bool, drift: float, vol: float):
-    if sim:
-        feed = MockMarketFeed(drift_bias=drift, volatility_multiplier=vol)
-    else:
-        feed = LiveMarketFeed()
-    m = feed.get_state()
-    return m if m else MockMarketFeed().get_state()
-
-if st.button("🔄 Rafraîchir les votes", type="primary"):
-    st.cache_data.clear()
-
-market = get_market(sim_mode, drift_bias, vol_mult)
-votes = [a.vote(market) for a in st.session_state.agents]
-agg = aggregate_votes(votes)
-
-# ─── Résumé du consensus ─────────────────────────────────────────────────────
+# ─── Consensus global ────────────────────────────────────────────────────────
 st.subheader("🎯 Consensus pondéré")
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    direction_icon = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}.get(agg.direction, "⚪")
-    st.metric("Direction", f"{direction_icon} {agg.direction}")
-with col2:
-    st.metric("Confiance", f"{agg.confidence:.1%}")
-with col3:
-    buy_count = sum(1 for v in votes if v.signal == "BUY")
-    sell_count = sum(1 for v in votes if v.signal == "SELL")
-    hold_count = sum(1 for v in votes if v.signal == "HOLD")
-    st.metric("Votes BUY / HOLD / SELL", f"{buy_count} / {hold_count} / {sell_count}")
-with col4:
-    st.metric("Agents actifs", len(votes))
 
-# Barre de consensus visuelle
-st.progress(float(agg.confidence), text=f"Confiance globale : {agg.confidence:.1%}")
+buy_w = agg.get("buy_weight", 0)
+sell_w = agg.get("sell_weight", 0)
+hold_w = agg.get("hold_weight", 0)
+total_w = buy_w + sell_w + hold_w
+
+with col1:
+    side_icon = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}.get(agg.get("side", "HOLD"), "🟡")
+    st.metric("Signal dominant", f"{side_icon} {agg.get('side', '—')}")
+with col2:
+    st.metric("Confiance", f"{agg.get('confidence', 0):.1%}")
+with col3:
+    buy_c = sum(1 for v in votes if v.signal == "BUY")
+    sell_c = sum(1 for v in votes if v.signal == "SELL")
+    hold_c = sum(1 for v in votes if v.signal == "HOLD")
+    st.metric("Votes", f"🟢{buy_c} 🔴{sell_c} 🟡{hold_c}")
+with col4:
+    if guard_result:
+        dec_icon = {"ALLOW": "🟢", "HOLD": "🟡", "BLOCK": "🔴"}.get(guard_result.decision.value, "🟡")
+        st.metric("Décision Guard", f"{dec_icon} {guard_result.decision.value}")
+
+st.progress(min(1.0, agg.get("confidence", 0)), text=f"Confiance globale : {agg.get('confidence', 0):.1%}")
 
 st.divider()
 
 # ─── Tableau des 14 agents ────────────────────────────────────────────────────
-st.subheader("📋 Votes détaillés")
+st.subheader("📊 Votes des 14 agents")
 
-FAMILIES = {
-    "Observation": ["PriceAgent", "VolumeAgent", "SpreadAgent"],
-    "Technique": ["RSIAgent", "MACDAgent", "BollingerAgent", "ATRAgent", "MomentumAgent"],
-    "Contexte": ["VolatilityAgent", "TrendAgent", "RegimeAgent"],
-    "Stratégie": ["MeanReversionAgent", "PortfolioAgent", "RiskAgent"],
-}
+rows = []
+for v in votes:
+    signal_icon = {"BUY": "🟢 BUY", "SELL": "🔴 SELL", "HOLD": "🟡 HOLD"}.get(v.signal, v.signal)
+    rows.append({
+        "Agent": v.name,
+        "Famille": v.category,
+        "Signal": signal_icon,
+        "Confiance": f"{v.confidence:.1%}",
+        "Raisonnement": v.rationale[:90] + "..." if len(v.rationale) > 90 else v.rationale,
+    })
 
-vote_map = {v.agent_name: v for v in votes}
+df_votes = pd.DataFrame(rows)
 
-for family, agent_names in FAMILIES.items():
-    family_icon = {"Observation": "👁️", "Technique": "📐", "Contexte": "🌍", "Stratégie": "♟️"}.get(family, "🔹")
-    st.markdown(f"**{family_icon} Famille {family}**")
+def color_signal(val):
+    if "BUY" in str(val):
+        return "color: #2ea043; font-weight: bold"
+    elif "SELL" in str(val):
+        return "color: #f85149; font-weight: bold"
+    return "color: #d29922"
 
-    rows = []
-    for name in agent_names:
-        v = vote_map.get(name)
-        if v:
-            signal_icon = {"BUY": "🟢 BUY", "SELL": "🔴 SELL", "HOLD": "🟡 HOLD"}.get(v.signal, "⚪")
-            rows.append({
-                "Agent": name,
-                "Signal": signal_icon,
-                "Confiance": f"{v.confidence:.1%}",
-                "Poids": f"{v.weight:.2f}",
-                "Rationale": v.rationale[:80] + "..." if len(v.rationale) > 80 else v.rationale,
-            })
+styled = df_votes.style.map(color_signal, subset=["Signal"])
+st.dataframe(styled, use_container_width=True, hide_index=True)
 
-    if rows:
-        df_fam = pd.DataFrame(rows)
-        st.dataframe(df_fam, use_container_width=True, hide_index=True)
+st.divider()
+
+# ─── Répartition par famille ──────────────────────────────────────────────────
+st.subheader("👨‍👩‍👧‍👦 Répartition par famille")
+families: dict = {}
+for v in votes:
+    fam = v.category
+    if fam not in families:
+        families[fam] = {"BUY": 0, "SELL": 0, "HOLD": 0}
+    families[fam][v.signal] = families[fam].get(v.signal, 0) + 1
+
+cols_fam = st.columns(max(1, len(families)))
+for i, (fam, counts) in enumerate(families.items()):
+    with cols_fam[i]:
+        st.markdown(f"**{fam.upper()}**")
+        st.markdown(f"🟢 BUY: **{counts.get('BUY', 0)}**")
+        st.markdown(f"🔴 SELL: **{counts.get('SELL', 0)}**")
+        st.markdown(f"🟡 HOLD: **{counts.get('HOLD', 0)}**")
 
 st.divider()
 
 # ─── Deep Dive par agent ──────────────────────────────────────────────────────
-st.subheader("🔬 Agent Deep Dive — Raisonnement Transparent")
-st.caption("Sélectionnez un agent pour voir exactement ses données, sa logique et son graphique.")
+st.subheader("🔬 Deep Dive — Raisonnement d'un agent")
 
-agent_names_all = [v.agent_name for v in votes]
-selected = st.selectbox("Choisir un agent", agent_names_all, index=0)
+agent_names_list = [v.name for v in votes]
+selected = st.selectbox("Sélectionnez un agent :", agent_names_list)
 
-v_sel = vote_map.get(selected)
-if v_sel:
-    col_info, col_graph = st.columns([1, 2])
+if selected and market:
+    v_sel = next((v for v in votes if v.name == selected), None)
+    if v_sel:
+        col_info, col_chart = st.columns([1, 2])
+        with col_info:
+            signal_color = {"BUY": "#2ea043", "SELL": "#f85149", "HOLD": "#d29922"}.get(v_sel.signal, "#8b949e")
+            st.markdown(f"""
+            <div style='background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px'>
+                <div style='font-size:0.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:0.05em'>Signal</div>
+                <div style='font-size:2rem;font-weight:700;color:{signal_color}'>{v_sel.signal}</div>
+                <div style='font-size:0.75rem;color:#8b949e;margin-top:8px'>Confiance</div>
+                <div style='font-size:1.4rem;font-weight:600;color:#58a6ff'>{v_sel.confidence:.1%}</div>
+                <div style='font-size:0.75rem;color:#8b949e;margin-top:8px'>Famille</div>
+                <div style='color:#c9d1d9'>{v_sel.category}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    with col_info:
-        signal_color = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}.get(v_sel.signal, "⚪")
-        st.markdown(f"### {signal_color} {v_sel.signal}")
-        st.metric("Confiance", f"{v_sel.confidence:.1%}")
-        st.metric("Poids dans le consensus", f"{v_sel.weight:.2f}")
+            st.markdown("**📝 Raisonnement :**")
+            st.info(v_sel.rationale)
 
-        st.markdown("**Raisonnement :**")
-        st.info(v_sel.rationale)
+            # Données brutes utilisées par l'agent
+            st.markdown("**📊 Données brutes :**")
+            data_rows = [
+                ("Prix actuel", f"${market.price:,.2f}"),
+                ("RSI (14)", f"{market.rsi:.1f}"),
+                ("Volatilité", f"{market.volatility:.4f}"),
+                ("Event Risk", f"{market.event_risk:.4f}"),
+                ("OBI", f"{market.order_book_imbalance:+.4f}"),
+                ("Sentiment", f"{market.sentiment_score:+.4f}"),
+            ]
+            if market.sma20:
+                data_rows.append(("SMA 20", f"${market.sma20:,.2f}"))
+            if market.sma50:
+                data_rows.append(("SMA 50", f"${market.sma50:,.2f}"))
+            df_data = pd.DataFrame(data_rows, columns=["Indicateur", "Valeur"])
+            st.dataframe(df_data, use_container_width=True, hide_index=True)
 
-        st.markdown("**Données utilisées :**")
+        with col_chart:
+            # Formule mathématique
+            formulas = {
+                "MarketDataAgent": "signal = BUY si Δprix > 0.1% | SELL si Δprix < -0.1% | HOLD",
+                "RSIAgent": "RSI(14) = 100 - 100/(1+RS) | BUY si RSI < 35 | SELL si RSI > 65",
+                "MACDAgent": "MACD = EMA(12) - EMA(26) | BUY si MACD > Signal | SELL sinon",
+                "BollingerAgent": "BB = SMA(20) ± 2σ | BUY si prix < BB_low | SELL si prix > BB_up",
+                "ATRAgent": "ATR(14) = EMA(True Range, 14) | HOLD si ATR/prix > 3%",
+                "ZScoreAgent": "Z = (prix - μ) / σ | BUY si Z < -1.5 | SELL si Z > 1.5",
+                "VolumeAgent": "vol_ratio = volume / vol_moy(20) | BUY si ratio > 1.5",
+                "SentimentAgent": "sentiment ∈ [-1, 1] | BUY si > 0.3 | SELL si < -0.3",
+                "EventRiskAgent": "event_risk ∈ [0, 1] | BLOCK si > 0.88 | HOLD si > 0.6",
+                "OrderBookAgent": "OBI = (bid_qty - ask_qty) / total | BUY si OBI > 0.15",
+                "TrendAgent": "trend = SMA20 vs SMA50 | BUY si SMA20 > SMA50 (golden cross)",
+                "MomentumAgent": "momentum = prix(t) / prix(t-10) - 1 | BUY si > 0.5%",
+                "PortfolioAgent": "exposure = base_units × prix / NAV | SELL si exposure > 80%",
+                "RiskAgent": "drawdown = (peak_NAV - NAV) / peak_NAV | BLOCK si > 15%",
+                "SignalAggregatorAgent": "S = α·T + β·H − γ·A (Obsidia OS2 structural score)",
+            }
+            formula = formulas.get(v_sel.name, "Formule propriétaire Obsidia v18.3")
+            st.markdown(f"**🔢 Formule :** `{formula}`")
 
-        # Données spécifiques selon l'agent
-        if selected == "RSIAgent":
-            rsi_val = market.rsi
-            status = "Suracheté (signal SELL)" if rsi_val > 70 else ("Survendu (signal BUY)" if rsi_val < 30 else "Zone neutre (HOLD)")
-            st.markdown(f"- RSI(14) = **{rsi_val:.1f}**")
-            st.markdown(f"- Statut : {status}")
-            st.markdown("- Formule : `RSI = 100 - 100/(1 + RS)`")
-
-        elif selected == "MACDAgent":
-            st.markdown(f"- Prix actuel : **${market.price:,.2f}**")
-            st.markdown(f"- Volatilité : **{market.volatility:.4f}**")
-            st.markdown("- Formule : `MACD = EMA(12) - EMA(26)`")
-            st.markdown("- Signal : `EMA(9) du MACD`")
-
-        elif selected == "BollingerAgent":
-            st.markdown(f"- Prix : **${market.price:,.2f}**")
-            st.markdown(f"- Volatilité σ : **{market.volatility:.4f}**")
-            st.markdown("- Formule : `BB = SMA(20) ± 2σ`")
-
-        elif selected == "ATRAgent":
-            st.markdown(f"- ATR(14) : **{market.atr:.4f}**")
-            st.markdown(f"- Spread : **{market.spread:.4f}**")
-            st.markdown("- Formule : `ATR = EMA(TR, 14)`")
-
-        elif selected in ("PriceAgent", "MomentumAgent"):
-            st.markdown(f"- Prix : **${market.price:,.2f}**")
-            st.markdown(f"- RSI : **{market.rsi:.1f}**")
-            st.markdown("- Formule : `Momentum = P(t) / P(t-n) - 1`")
-
-        elif selected == "VolumeAgent":
-            st.markdown(f"- Volume : **{market.volume:,.0f}**")
-            st.markdown("- Seuil : Volume > moyenne × 1.5 → signal fort")
-
-        elif selected == "VolatilityAgent":
-            st.markdown(f"- Volatilité réalisée : **{market.volatility:.4f}**")
-            st.markdown("- Seuil haut : 0.03 → HOLD (trop risqué)")
-            st.markdown("- Seuil bas : 0.005 → BUY (marché calme)")
-
-        elif selected == "TrendAgent":
-            st.markdown(f"- RSI : **{market.rsi:.1f}**")
-            st.markdown(f"- Volatilité : **{market.volatility:.4f}**")
-            st.markdown("- Tendance haussière si RSI > 55 et vol < 0.025")
-
-        elif selected in ("PortfolioAgent", "RiskAgent"):
-            nav = st.session_state.get("portfolio")
-            if nav:
-                nav_dict = nav.as_dict()
-                st.markdown(f"- NAV : **${nav_dict['nav']:,.2f}**")
-                st.markdown(f"- PnL : **${nav_dict['total_pnl']:+,.2f}**")
-                st.markdown(f"- Drawdown : **{nav_dict['max_drawdown']:.2%}**")
-            st.markdown("- Limite de risque : drawdown max 15%")
-
-        else:
-            st.markdown(f"- Prix : **${market.price:,.2f}**")
-            st.markdown(f"- RSI : **{market.rsi:.1f}**")
-            st.markdown(f"- Volatilité : **{market.volatility:.4f}**")
-
-    with col_graph:
-        st.markdown("**Visualisation de l'indicateur**")
-
-        # Générer un historique simulé pour l'indicateur
-        import random
-        import math
-
-        n_points = 60
-        prices = [market.price * (1 + random.gauss(0, market.volatility)) for _ in range(n_points)]
-        prices[-1] = market.price
-
-        if selected == "RSIAgent":
-            # Simuler RSI sur 60 points
-            rsi_vals = []
-            for i in range(n_points):
-                base = 50 + 20 * math.sin(i / 10) + random.gauss(0, 5)
-                rsi_vals.append(max(0, min(100, base)))
-            rsi_vals[-1] = market.rsi
-            df_rsi = pd.DataFrame({"RSI": rsi_vals, "Suracheté (70)": [70]*n_points, "Survendu (30)": [30]*n_points})
-            st.line_chart(df_rsi, height=300)
-
-        elif selected in ("MACDAgent",):
-            macd_line = [random.gauss(0, 0.5) for _ in range(n_points)]
-            signal_line = [sum(macd_line[max(0,i-9):i+1])/(min(i+1,9)) for i in range(n_points)]
-            df_macd = pd.DataFrame({"MACD": macd_line, "Signal": signal_line})
-            st.line_chart(df_macd, height=300)
-
-        elif selected == "BollingerAgent":
-            sma_vals = [sum(prices[max(0,i-20):i+1])/min(i+1,20) for i in range(n_points)]
-            std_vals = [max(0.5, abs(prices[i] - sma_vals[i]) * 2) for i in range(n_points)]
-            df_bb = pd.DataFrame({
-                "Prix": prices,
-                "BB Sup": [sma_vals[i] + std_vals[i] for i in range(n_points)],
-                "SMA(20)": sma_vals,
-                "BB Inf": [sma_vals[i] - std_vals[i] for i in range(n_points)],
-            })
-            st.line_chart(df_bb, height=300)
-
-        elif selected == "ATRAgent":
-            atr_vals = [abs(random.gauss(market.atr, market.atr * 0.3)) for _ in range(n_points)]
-            atr_vals[-1] = market.atr
-            df_atr = pd.DataFrame({"ATR(14)": atr_vals})
-            st.line_chart(df_atr, height=300, color="#f0883e")
-
-        elif selected == "VolatilityAgent":
-            vol_vals = [abs(random.gauss(market.volatility, market.volatility * 0.3)) for _ in range(n_points)]
-            vol_vals[-1] = market.volatility
-            df_vol = pd.DataFrame({
-                "Volatilité": vol_vals,
-                "Seuil haut (0.03)": [0.03]*n_points,
-                "Seuil bas (0.005)": [0.005]*n_points,
-            })
-            st.line_chart(df_vol, height=300)
-
-        else:
-            # Graphique prix par défaut
-            df_price = pd.DataFrame({"Prix": prices})
-            st.line_chart(df_price, height=300, color="#58a6ff")
-
-        # Score structurel Obsidia
-        st.markdown("**Score structurel Obsidia (OS2)**")
-        score = structural_score(market)
-        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-        with col_s1:
-            st.metric("T (Trend)", f"{score.get('T', 0):.3f}")
-        with col_s2:
-            st.metric("H (Harmony)", f"{score.get('H', 0):.3f}")
-        with col_s3:
-            st.metric("A (Anomaly)", f"{score.get('A', 0):.3f}")
-        with col_s4:
-            st.metric("S (Score final)", f"{score.get('S', 0):.3f}")
-        st.caption("Formule : S = α·T + β·H − γ·A (moteur Obsidia v18.3)")
+            # Graphique historique si disponible
+            if len(history) >= 2:
+                df_h = pd.DataFrame(history)
+                if v_sel.category in ("technical", "strategy"):
+                    st.markdown("**📈 Prix + RSI (historique)**")
+                    st.line_chart(df_h.set_index("cycle")[["price"]], height=160)
+                    st.line_chart(df_h.set_index("cycle")[["rsi"]], height=120)
+                    st.caption("🔴 RSI > 70 = Suracheté | 🟢 RSI < 30 = Survendu")
+                elif v_sel.category == "observation":
+                    st.markdown("**📊 Prix + Volatilité (historique)**")
+                    st.line_chart(df_h.set_index("cycle")[["price"]], height=160)
+                    st.area_chart(df_h.set_index("cycle")[["volatility"]], height=120)
+                else:
+                    st.markdown("**📈 NAV + Score S (historique)**")
+                    st.line_chart(df_h.set_index("cycle")[["nav"]], height=160)
+                    st.line_chart(df_h.set_index("cycle")[["score_s"]], height=120)
+                    st.caption(f"Seuil θ_S = {st.session_state.get('guard_threshold', 0.55):.2f}")
+            else:
+                st.info("Accumulez des cycles depuis **Home** pour voir les graphiques.")

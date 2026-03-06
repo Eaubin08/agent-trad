@@ -1,6 +1,6 @@
 """
 Page 1 — Marché Live
-Affiche les données de marché en temps réel (BTC, ETH) avec graphiques natifs Streamlit.
+Utilise l'état partagé de session (last_market, history) du moteur principal.
 """
 from __future__ import annotations
 import sys, os
@@ -8,132 +8,112 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 import pandas as pd
-import time
-
-from core.live_market import MockMarketFeed, LiveMarketFeed
-from agents.indicators import rsi, macd, atr, sma, realized_volatility
 
 st.set_page_config(page_title="Market — Obsidia", page_icon="📈", layout="wide")
 
 st.title("📈 Marché Live")
-st.caption("Données BTC/USDT en temps réel (Binance) ou simulées")
+st.caption("Données BTC/USDT partagées avec le moteur principal — lancez l'agent depuis **Home**")
 
-# ─── Initialisation ──────────────────────────────────────────────────────────
-if "market_history" not in st.session_state:
-    st.session_state.market_history = []
-if "market_running" not in st.session_state:
-    st.session_state.market_running = False
+# ─── Vérification état session ───────────────────────────────────────────────
+if "last_market" not in st.session_state or st.session_state.last_market is None:
+    st.warning("⚠️ Aucune donnée de marché disponible. Lancez l'agent depuis la page **Home** (▶ Run).")
+    st.info("💡 Allez sur la page **Home**, cliquez **▶ Run**, puis revenez ici.")
+    st.stop()
 
-sim_mode = st.session_state.get("sim_mode", True)
-drift_bias = st.session_state.get("drift_bias", 0.0)
-vol_mult = st.session_state.get("vol_mult", 1.0)
+market = st.session_state.last_market
+history = st.session_state.get("history", [])
 
-# ─── Contrôles ───────────────────────────────────────────────────────────────
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 4])
-with col_ctrl1:
-    if st.button("▶ Démarrer flux", type="primary", use_container_width=True):
-        st.session_state.market_running = True
-with col_ctrl2:
-    if st.button("⏹ Arrêter", use_container_width=True):
-        st.session_state.market_running = False
-with col_ctrl3:
-    refresh_rate = st.slider("Vitesse (secondes)", 0.5, 5.0, 1.0, 0.5)
+# ─── KPIs marché ─────────────────────────────────────────────────────────────
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    prev_price = history[-2]["price"] if len(history) >= 2 else market.price
+    delta_p = market.price - prev_price
+    st.metric("💹 Prix BTC", f"${market.price:,.2f}", f"{delta_p:+.2f}")
+with col2:
+    vol_status = "🔴 Élevée" if market.volatility > 0.5 else "🟢 Normale"
+    st.metric("📊 Volatilité", f"{market.volatility:.3f}", vol_status)
+with col3:
+    er_status = "🔴 Critique" if market.event_risk > 0.88 else "🟢 OK"
+    st.metric("⚡ Event Risk", f"{market.event_risk:.3f}", er_status)
+with col4:
+    obi_label = "🟢 Acheteurs" if market.order_book_imbalance > 0.1 else ("🔴 Vendeurs" if market.order_book_imbalance < -0.1 else "🟡 Équilibré")
+    st.metric("📖 OBI", f"{market.order_book_imbalance:+.3f}", obi_label)
+with col5:
+    st.metric("💧 Spread", f"{market.spread_bps:.1f} bps")
 
 st.divider()
 
-# ─── Récupération d'un tick ───────────────────────────────────────────────────
-def fetch_tick():
-    if sim_mode:
-        feed = MockMarketFeed(drift_bias=drift_bias, volatility_multiplier=vol_mult)
-    else:
-        feed = LiveMarketFeed()
-    m = feed.get_state()
-    if m is None:
-        m = MockMarketFeed().get_state()
-    return m
+# ─── Indicateurs techniques ───────────────────────────────────────────────────
+col_a, col_b, col_c, col_d = st.columns(4)
+with col_a:
+    rsi_color = "🔴" if market.rsi > 70 else "🟢" if market.rsi < 30 else "🟡"
+    rsi_label = "Suracheté" if market.rsi > 70 else "Survendu" if market.rsi < 30 else "Neutre"
+    st.metric(f"{rsi_color} RSI (14)", f"{market.rsi:.1f}", rsi_label)
+with col_b:
+    st.metric("📈 SMA 20", f"${market.sma20:,.2f}" if market.sma20 else "—")
+with col_c:
+    st.metric("📈 SMA 50", f"${market.sma50:,.2f}" if market.sma50 else "—")
+with col_d:
+    st.metric("😊 Sentiment", f"{market.sentiment_score:+.3f}",
+              "Positif" if market.sentiment_score > 0 else "Négatif")
 
-if st.session_state.market_running or not st.session_state.market_history:
-    m = fetch_tick()
-    st.session_state.market_history.append({
-        "time": len(st.session_state.market_history),
-        "price": round(m.price, 2),
-        "volume": round(m.volume, 0),
-        "rsi": round(m.rsi, 1),
-        "volatility": round(m.volatility * 100, 2),
-        "spread": round(m.spread, 4),
-    })
-    if len(st.session_state.market_history) > 300:
-        st.session_state.market_history = st.session_state.market_history[-300:]
+st.divider()
 
-# ─── Affichage des métriques actuelles ───────────────────────────────────────
-if st.session_state.market_history:
-    latest = st.session_state.market_history[-1]
-    prev = st.session_state.market_history[-2] if len(st.session_state.market_history) > 1 else latest
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        delta_price = latest["price"] - prev["price"]
-        st.metric("💹 BTC/USDT", f"${latest['price']:,.2f}", f"{delta_price:+.2f}")
-    with c2:
-        rsi_val = latest["rsi"]
-        rsi_status = "🔴 Suracheté" if rsi_val > 70 else ("🟢 Survendu" if rsi_val < 30 else "🟡 Neutre")
-        st.metric("📊 RSI(14)", f"{rsi_val:.1f}", rsi_status)
-    with c3:
-        st.metric("📉 Volatilité", f"{latest['volatility']:.2f}%")
-    with c4:
-        st.metric("📦 Volume", f"{latest['volume']:,.0f}")
-    with c5:
-        st.metric("↔️ Spread", f"{latest['spread']:.4f}")
-
-    st.divider()
-
-    # ─── Graphiques ──────────────────────────────────────────────────────────
-    df = pd.DataFrame(st.session_state.market_history)
+# ─── Graphiques historiques ───────────────────────────────────────────────────
+if len(history) >= 2:
+    df = pd.DataFrame(history)
 
     col_g1, col_g2 = st.columns(2)
-
     with col_g1:
-        st.subheader("💹 Prix BTC/USDT")
-        if len(df) >= 2:
-            st.line_chart(df.set_index("time")["price"], height=250, color="#58a6ff")
-        else:
-            st.info("Accumulation de données...")
-
+        st.subheader("💹 Prix BTC — Historique")
+        st.line_chart(df.set_index("cycle")[["price"]], height=220)
     with col_g2:
-        st.subheader("📊 RSI(14)")
-        if len(df) >= 2:
-            df_rsi = df.set_index("time")[["rsi"]].copy()
-            st.line_chart(df_rsi, height=250, color="#f0883e")
-            # Zones RSI
-            col_r1, col_r2, col_r3 = st.columns(3)
-            with col_r1:
-                st.markdown("🔴 **>70** Suracheté")
-            with col_r2:
-                st.markdown("🟡 **30-70** Neutre")
-            with col_r3:
-                st.markdown("🟢 **<30** Survendu")
+        st.subheader("📊 RSI (14)")
+        st.line_chart(df.set_index("cycle")[["rsi"]], height=220)
+        st.caption("🔴 > 70 Suracheté | 🟡 30–70 Neutre | 🟢 < 30 Survendu")
 
     col_g3, col_g4 = st.columns(2)
-
     with col_g3:
-        st.subheader("📉 Volatilité réalisée (%)")
-        if len(df) >= 2:
-            st.area_chart(df.set_index("time")["volatility"], height=200, color="#da3633")
-
+        st.subheader("📉 Volatilité")
+        st.area_chart(df.set_index("cycle")[["volatility"]], height=180)
+        st.caption("🔴 > 0.58 = Guard X-108 bloque les trades")
     with col_g4:
-        st.subheader("📦 Volume")
-        if len(df) >= 2:
-            st.bar_chart(df.set_index("time")["volume"], height=200, color="#2ea043")
+        st.subheader("🎯 Score S (Guard X-108)")
+        st.line_chart(df.set_index("cycle")[["score_s"]], height=180)
+        st.caption(f"Seuil θ_S = {st.session_state.get('guard_threshold', 0.55):.2f}")
 
-    st.divider()
+else:
+    st.info("Lancez l'agent depuis la page **Home** pour accumuler des données de marché.")
 
-    # ─── Tableau des derniers ticks ──────────────────────────────────────────
-    st.subheader("📋 Derniers ticks")
-    df_display = df.tail(20)[::-1].copy()
-    df_display.columns = ["Tick", "Prix ($)", "Volume", "RSI", "Volatilité (%)", "Spread"]
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+st.divider()
 
-# Auto-refresh si running
-if st.session_state.market_running:
-    time.sleep(refresh_rate)
-    st.rerun()
+# ─── Tableau des derniers cycles ─────────────────────────────────────────────
+if history:
+    st.subheader("📋 Derniers cycles")
+    df_last = pd.DataFrame(history[-20:][::-1])
+    decision_icons = {"ALLOW": "🟢", "HOLD": "🟡", "BLOCK": "🔴"}
+    df_last["decision"] = df_last["decision"].map(lambda d: f"{decision_icons.get(d, '⚪')} {d}")
+    cols_show = ["cycle", "price", "rsi", "volatility", "decision", "score_s"]
+    st.dataframe(df_last[cols_show], use_container_width=True, hide_index=True)
+
+st.divider()
+
+# ─── Données brutes du dernier cycle ─────────────────────────────────────────
+with st.expander("🔍 Données brutes du dernier cycle (MarketState)"):
+    raw_data = {
+        "Prix": f"${market.price:,.2f}",
+        "High": f"${market.high:,.2f}" if market.high else "—",
+        "Low": f"${market.low:,.2f}" if market.low else "—",
+        "Volume": f"{market.volume:,.0f}" if market.volume else "—",
+        "Spread (bps)": f"{market.spread_bps:.2f}",
+        "OBI": f"{market.order_book_imbalance:+.4f}",
+        "Volatilité": f"{market.volatility:.4f}",
+        "Event Risk": f"{market.event_risk:.4f}",
+        "Sentiment": f"{market.sentiment_score:+.4f}",
+        "RSI": f"{market.rsi:.2f}",
+        "SMA20": f"${market.sma20:,.2f}" if market.sma20 else "—",
+        "SMA50": f"${market.sma50:,.2f}" if market.sma50 else "—",
+        "Nb prix historiques": len(market.prices),
+    }
+    df_raw = pd.DataFrame(list(raw_data.items()), columns=["Métrique", "Valeur"])
+    st.dataframe(df_raw, use_container_width=True, hide_index=True)
