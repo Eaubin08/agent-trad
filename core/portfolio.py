@@ -44,6 +44,10 @@ class Portfolio:
         nav = max(self.state.nav, 1e-9)
         return (self.state.base_units * self.state.last_price) / nav if self.state.last_price else 0.0
 
+    def as_dict(self) -> dict:
+        """Délègue vers PortfolioState.as_dict() pour compatibilité app.py"""
+        return self.state.as_dict()
+
     def apply(self, side: str, price: float, quantity: float, decision: str) -> PortfolioState:
         self.state.last_price = price
         if decision != "ALLOW":
