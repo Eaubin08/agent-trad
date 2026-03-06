@@ -130,20 +130,23 @@ if selected and market:
 
             # Données brutes utilisées par l'agent
             st.markdown("**📊 Données brutes :**")
-            data_rows = [
-                ("Prix actuel", f"${market.price:,.2f}"),
-                ("RSI (14)", f"{market.rsi:.1f}"),
-                ("Volatilité", f"{market.volatility:.4f}"),
-                ("Event Risk", f"{market.event_risk:.4f}"),
-                ("OBI", f"{market.order_book_imbalance:+.4f}"),
-                ("Sentiment", f"{market.sentiment_score:+.4f}"),
-            ]
-            if market.sma20:
-                data_rows.append(("SMA 20", f"${market.sma20:,.2f}"))
-            if market.sma50:
-                data_rows.append(("SMA 50", f"${market.sma50:,.2f}"))
-            df_data = pd.DataFrame(data_rows, columns=["Indicateur", "Valeur"])
-            st.dataframe(df_data, use_container_width=True, hide_index=True)
+            if market is not None:
+                data_rows = [
+                    ("Prix actuel", f"${market.price:,.2f}"),
+                    ("RSI (14)", f"{market.rsi:.1f}"),
+                    ("Volatilité", f"{market.volatility:.4f}"),
+                    ("Event Risk", f"{market.event_risk:.4f}"),
+                    ("OBI", f"{market.order_book_imbalance:+.4f}"),
+                    ("Sentiment", f"{market.sentiment_score:+.4f}"),
+                ]
+                if market.sma20:
+                    data_rows.append(("SMA 20", f"${market.sma20:,.2f}"))
+                if market.sma50:
+                    data_rows.append(("SMA 50", f"${market.sma50:,.2f}"))
+                df_data = pd.DataFrame(data_rows, columns=["Indicateur", "Valeur"])
+                st.dataframe(df_data, use_container_width=True, hide_index=True)
+            else:
+                st.info("Données de marché non disponibles pour ce cycle.")
 
         with col_chart:
             # Formule mathématique

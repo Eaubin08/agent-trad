@@ -213,15 +213,33 @@ st.caption(f"Agent `{AGENT_NAME}` · Version `{AGENT_VERSION}` · Réseau Sepoli
 
 # Exécution auto si running
 if st.session_state.running:
-    market, agg, guard_result = run_one_cycle()
+    try:
+        market, agg, guard_result = run_one_cycle()
+    except Exception as e:
+        st.error(f"Erreur cycle : {e}")
+        market = st.session_state.last_market
+        guard_result = st.session_state.last_decision
+        agg = st.session_state.last_agg
     time.sleep(0.3)
     st.rerun()
 elif st.session_state.last_market is None:
-    market, agg, guard_result = run_one_cycle()
+    try:
+        market, agg, guard_result = run_one_cycle()
+    except Exception as e:
+        st.error(f"Erreur initialisation : {e}")
+        market = None
+        guard_result = None
+        agg = None
 else:
     market = st.session_state.last_market
     guard_result = st.session_state.last_decision
     agg = st.session_state.last_agg
+
+# Garde défensive : si market est toujours None après le cycle initial, on stop
+if market is None:
+    st.warning("⚠️ Aucune donnée de marché disponible. Cliquez **▶ Run** dans la sidebar pour démarrer l'agent.")
+    st.info("💡 L'agent va automatiquement basculer sur le mode simulation si Binance est indisponible.")
+    st.stop()
 
 # ─── KPIs principaux ─────────────────────────────────────────────────────────
 port_dict = st.session_state.portfolio.as_dict()
