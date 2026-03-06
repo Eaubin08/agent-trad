@@ -26,6 +26,7 @@ from core.guard_x108 import GuardX108
 from core.live_market import LiveMarketFeed, MockMarketFeed
 from core.logger import ProofLogger
 from core.portfolio import Portfolio
+from ui.components.agent_deep_dive import render_agent_deep_dive
 
 # ── Configuration de la page ─────────────────────────────────────────────────
 st.set_page_config(
@@ -63,10 +64,20 @@ if "cycle_count" not in st.session_state:
     st.session_state.cycle_count = 0
 if "trade_count" not in st.session_state:
     st.session_state.trade_count = 0
+if "mock_feed" not in st.session_state:
+    st.session_state.mock_feed = MockMarketFeed(symbol=TRADING_SYMBOL)
+if "force_mock" not in st.session_state:
+    st.session_state.force_mock = False
+if "drift_bias" not in st.session_state:
+    st.session_state.drift_bias = 0.0
+if "vol_mult" not in st.session_state:
+    st.session_state.vol_mult = 1.0
+if "guard_theta" not in st.session_state:
+    st.session_state.guard_theta = GUARD_THETA_S
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.image("https://img.shields.io/badge/ERC--8004-Hackathon-blueviolet?style=for-the-badge", use_column_width=True)
+    st.image("https://img.shields.io/badge/ERC--8004-Hackathon-blueviolet?style=for-the-badge", use_container_width=True)
     st.subheader("🔮 Obsidia Trustless Agent")
     st.caption("14 agents • Guard X-108 • ERC-8004")
     st.divider()
@@ -86,10 +97,67 @@ with st.sidebar:
     st.json(st.session_state.identity)
     st.divider()
 
-    feed_status = "🟢 LIVE (Binance)" if st.session_state.feed.is_live else "🟡 MOCK (Fallback)"
+    feed_status = "🟢 LIVE (Binance)" if (not st.session_state.force_mock and st.session_state.feed.is_live) else "🟡 MOCK (Simulation)"
     st.metric("Market Feed", feed_status)
     st.metric("Cycles", st.session_state.cycle_count)
     st.metric("Trades", st.session_state.trade_count)
+    st.divider()
+
+    # ── Panneau Market & Risk Control ────────────────────────────────────────
+    st.subheader("🎛️ Market & Risk Control")
+    st.caption("Contrôlez le marché simulé et les seuils du Guard X-108")
+
+    force_mock = st.toggle(
+        "🔬 Forcer le mode Simulation",
+        value=st.session_state.force_mock,
+        help="Désactive Binance et utilise un marché simulé contrôlable",
+    )
+    if force_mock != st.session_state.force_mock:
+        st.session_state.force_mock = force_mock
+
+    if st.session_state.force_mock:
+        st.markdown("**📈 Tendance du marché simulé**")
+        drift = st.slider(
+            "Biais directionnel",
+            min_value=-0.030, max_value=0.030, value=st.session_state.drift_bias,
+            step=0.001, format="%.3f",
+            help="Négatif = baissier, Positif = haussier",
+        )
+        if drift != st.session_state.drift_bias:
+            st.session_state.drift_bias = drift
+            st.session_state.mock_feed.drift_bias = drift
+
+        vol_mult = st.slider(
+            "Multiplicateur de volatilité",
+            min_value=0.1, max_value=5.0, value=st.session_state.vol_mult,
+            step=0.1, format="%.1fx",
+            help="1.0 = normal, 3.0 = marché très agité",
+        )
+        if vol_mult != st.session_state.vol_mult:
+            st.session_state.vol_mult = vol_mult
+            st.session_state.mock_feed.volatility_multiplier = vol_mult
+
+        if st.button("⚡ Injecter Flash Crash", use_container_width=True, type="primary"):
+            st.session_state.mock_feed.flash_crash = True
+            st.warning("Flash crash injecté ! Il sera appliqué au prochain cycle.")
+
+    st.divider()
+    st.markdown("**🛡️ Guard X-108 — Seuil de sécurité**")
+    guard_theta = st.slider(
+        "Seuil de cohésion θ_S",
+        min_value=0.05, max_value=0.60, value=st.session_state.guard_theta,
+        step=0.01, format="%.2f",
+        help="Plus élevé = Guard plus strict (bloque plus de trades)",
+    )
+    if guard_theta != st.session_state.guard_theta:
+        st.session_state.guard_theta = guard_theta
+        st.session_state.guard = GuardX108(
+            base_threshold=GUARD_BASE_THRESHOLD,
+            min_consensus=GUARD_MIN_CONSENSUS,
+            theta_S=guard_theta,
+            min_wait_s=GUARD_MIN_WAIT_S,
+        )
+    st.caption(f"Seuil actuel : **{guard_theta:.2f}** (défaut : {GUARD_THETA_S})")
 
 # ── Titre ────────────────────────────────────────────────────────────────────
 st.title("🔮 Obsidia — Trustless Multi-Agent Trading System")
@@ -99,7 +167,11 @@ st.caption(
 )
 
 # ── Exécution du cycle ───────────────────────────────────────────────────────
-state = st.session_state.feed.next()
+# Choix du feed : live Binance ou mock contrôlable
+if st.session_state.force_mock:
+    state = st.session_state.mock_feed.next()
+else:
+    state = st.session_state.feed.next()
 portfolio = st.session_state.portfolio
 
 # Mise à jour des agents Portfolio avec l'état courant
@@ -271,7 +343,11 @@ with left:
             return "background-color: #4a1942; color: #f783ac"
         return "background-color: #2b2d42; color: #adb5bd"
 
-    styled = sig_df.style.applymap(color_signal, subset=["Signal"])
+    # applymap est déprécié depuis pandas 2.1 → utiliser map
+    try:
+        styled = sig_df.style.map(color_signal, subset=["Signal"])
+    except AttributeError:
+        styled = sig_df.style.applymap(color_signal, subset=["Signal"])
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
     st.subheader("📊 Consensus pondéré")
@@ -280,7 +356,10 @@ with left:
         {"Direction": "SELL", "Score": round(consensus["sell_weight"], 3)},
         {"Direction": "HOLD", "Score": round(consensus["hold_weight"], 3)},
     ])
-    st.bar_chart(agg_df.set_index("Direction"))
+    if agg_df["Score"].sum() > 0:
+        st.bar_chart(agg_df.set_index("Direction"))
+    else:
+        st.info("En attente de données de consensus...")
 
 with right:
     st.subheader("🔐 Guard X-108 — Détail")
@@ -325,23 +404,36 @@ with right:
 
 st.divider()
 
+# ── Agent Deep Dive ──────────────────────────────────────────────────────────
+st.divider()
+render_agent_deep_dive(state, votes)
+
+st.divider()
+
 # ── Historique ───────────────────────────────────────────────────────────────
 st.subheader("📈 Historique des cycles")
 if st.session_state.history:
     hist_df = pd.DataFrame(st.session_state.history[-50:])
     col_chart1, col_chart2 = st.columns(2)
     with col_chart1:
-        if "price" in hist_df.columns:
+        if "price" in hist_df.columns and len(hist_df) >= 2:
             st.line_chart(hist_df.set_index("cycle")[["price"]], height=200)
+        else:
+            st.info("Accumulation des données de prix...")
     with col_chart2:
-        if "nav" in hist_df.columns:
+        if "nav" in hist_df.columns and len(hist_df) >= 2:
             st.line_chart(hist_df.set_index("cycle")[["nav"]], height=200)
+        else:
+            st.info("Accumulation des données NAV...")
 
-    st.dataframe(
-        hist_df[["cycle", "price", "decision", "side", "confidence", "structural_S", "nav", "pnl"]].tail(15),
-        use_container_width=True,
-        hide_index=True,
-    )
+    # Colonnes disponibles uniquement
+    available_cols = [c for c in ["cycle", "price", "decision", "side", "confidence", "structural_S", "nav", "pnl"] if c in hist_df.columns]
+    if available_cols:
+        st.dataframe(
+            hist_df[available_cols].tail(15),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 st.divider()
 

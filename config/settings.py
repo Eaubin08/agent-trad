@@ -49,6 +49,11 @@ AGENT_PROFILE = {
     "engine": "Obsidia v18.3 + ERC-8004",
 }
 
+# ── Aliases pratiques pour les pages UI ─────────────────────────────────────
+AGENT_NAME: str = AGENT_PROFILE["name"]
+AGENT_VERSION: str = AGENT_PROFILE["version"]
+AGENT_DESCRIPTION: str = AGENT_PROFILE["description"]
+
 # ── Paramètres de trading ────────────────────────────────────────────────────
 TRADING_SYMBOL: str = os.getenv("TRADING_SYMBOL", "BTCUSDT")
 POSITION_SIZE_PCT: float = float(os.getenv("POSITION_SIZE_PCT", "0.03"))  # 3% du NAV par trade
