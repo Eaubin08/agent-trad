@@ -26,36 +26,42 @@ history = st.session_state.get("history", [])
 # ─── KPIs marché ─────────────────────────────────────────────────────────────
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    prev_price = history[-2]["price"] if len(history) >= 2 else market.price
-    delta_p = market.price - prev_price
-    st.metric("💹 Prix BTC", f"${market.price:,.2f}", f"{delta_p:+.2f}")
+    prev_price = history[-2]["price"] if len(history) >= 2 else (market.price if market else 0.0)
+    delta_p = (market.price - prev_price) if market else 0.0
+    st.metric("💹 Prix BTC", f"${market.price:,.2f}" if market else "—", f"{delta_p:+.2f}" if delta_p else "")
 with col2:
-    vol_status = "🔴 Élevée" if market.volatility > 0.5 else "🟢 Normale"
-    st.metric("📊 Volatilité", f"{market.volatility:.3f}", vol_status)
+    vol_status = "🔴 Élevée" if (market and market.volatility > 0.5) else "🟢 Normale"
+    st.metric("📊 Volatilité", f"{market.volatility:.3f}" if market else "—", vol_status)
 with col3:
-    er_status = "🔴 Critique" if market.event_risk > 0.88 else "🟢 OK"
-    st.metric("⚡ Event Risk", f"{market.event_risk:.3f}", er_status)
+    er_status = "🔴 Critique" if (market and market.event_risk > 0.88) else "🟢 OK"
+    st.metric("⚡ Event Risk", f"{market.event_risk:.3f}" if market else "—", er_status)
 with col4:
-    obi_label = "🟢 Acheteurs" if market.order_book_imbalance > 0.1 else ("🔴 Vendeurs" if market.order_book_imbalance < -0.1 else "🟡 Équilibré")
-    st.metric("📖 OBI", f"{market.order_book_imbalance:+.3f}", obi_label)
+    obi_label = "🟢 Acheteurs" if (market and market.order_book_imbalance > 0.1) else ("🔴 Vendeurs" if (market and market.order_book_imbalance < -0.1) else "🟡 Équilibré")
+    st.metric("📖 OBI", f"{market.order_book_imbalance:+.3f}" if market else "—", obi_label)
 with col5:
-    st.metric("💧 Spread", f"{market.spread_bps:.1f} bps")
+    st.metric("💧 Spread", f"{market.spread_bps:.1f} bps" if market else "—")
 
 st.divider()
 
 # ─── Indicateurs techniques ───────────────────────────────────────────────────
 col_a, col_b, col_c, col_d = st.columns(4)
 with col_a:
-    rsi_color = "🔴" if market.rsi > 70 else "🟢" if market.rsi < 30 else "🟡"
-    rsi_label = "Suracheté" if market.rsi > 70 else "Survendu" if market.rsi < 30 else "Neutre"
-    st.metric(f"{rsi_color} RSI (14)", f"{market.rsi:.1f}", rsi_label)
+    if market:
+        rsi_color = "🔴" if market.rsi > 70 else "🟢" if market.rsi < 30 else "🟡"
+        rsi_label = "Surachété" if market.rsi > 70 else "Survendu" if market.rsi < 30 else "Neutre"
+        st.metric(f"{rsi_color} RSI (14)", f"{market.rsi:.1f}", rsi_label)
+    else:
+        st.metric("🟡 RSI (14)", "—")
 with col_b:
-    st.metric("📈 SMA 20", f"${market.sma20:,.2f}" if market.sma20 else "—")
+    st.metric("📈 SMA 20", f"${market.sma20:,.2f}" if (market and market.sma20) else "—")
 with col_c:
-    st.metric("📈 SMA 50", f"${market.sma50:,.2f}" if market.sma50 else "—")
+    st.metric("📈 SMA 50", f"${market.sma50:,.2f}" if (market and market.sma50) else "—")
 with col_d:
-    st.metric("😊 Sentiment", f"{market.sentiment_score:+.3f}",
-              "Positif" if market.sentiment_score > 0 else "Négatif")
+    if market:
+        st.metric("😊 Sentiment", f"{market.sentiment_score:+.3f}",
+                  "Positif" if market.sentiment_score > 0 else "Négatif")
+    else:
+        st.metric("😊 Sentiment", "—")
 
 st.divider()
 
@@ -98,22 +104,23 @@ if history:
 
 st.divider()
 
-# ─── Données brutes du dernier cycle ─────────────────────────────────────────
-with st.expander("🔍 Données brutes du dernier cycle (MarketState)"):
-    raw_data = {
-        "Prix": f"${market.price:,.2f}",
-        "High": f"${market.high:,.2f}" if market.high else "—",
-        "Low": f"${market.low:,.2f}" if market.low else "—",
-        "Volume": f"{market.volume:,.0f}" if market.volume else "—",
-        "Spread (bps)": f"{market.spread_bps:.2f}",
-        "OBI": f"{market.order_book_imbalance:+.4f}",
-        "Volatilité": f"{market.volatility:.4f}",
-        "Event Risk": f"{market.event_risk:.4f}",
-        "Sentiment": f"{market.sentiment_score:+.4f}",
-        "RSI": f"{market.rsi:.2f}",
-        "SMA20": f"${market.sma20:,.2f}" if market.sma20 else "—",
-        "SMA50": f"${market.sma50:,.2f}" if market.sma50 else "—",
-        "Nb prix historiques": len(market.prices),
-    }
-    df_raw = pd.DataFrame(list(raw_data.items()), columns=["Métrique", "Valeur"])
-    st.dataframe(df_raw, use_container_width=True, hide_index=True)
+# ─── Données brutes du dernier cycle ────────────────────────────────────────────────────────────────────────────────────
+if market:
+    with st.expander("🔍 Données brutes du dernier cycle (MarketState)"):
+        raw_data = {
+            "Prix": f"${market.price:,.2f}",
+            "High": f"${market.high:,.2f}" if market.high else "—",
+            "Low": f"${market.low:,.2f}" if market.low else "—",
+            "Volume": f"{market.volume:,.0f}" if market.volume else "—",
+            "Spread (bps)": f"{market.spread_bps:.2f}",
+            "OBI": f"{market.order_book_imbalance:+.4f}",
+            "Volatilité": f"{market.volatility:.4f}",
+            "Event Risk": f"{market.event_risk:.4f}",
+            "Sentiment": f"{market.sentiment_score:+.4f}",
+            "RSI": f"{market.rsi:.2f}",
+            "SMA20": f"${market.sma20:,.2f}" if market.sma20 else "—",
+            "SMA50": f"${market.sma50:,.2f}" if market.sma50 else "—",
+            "Nb prix historiques": len(market.prices),
+        }
+        df_raw = pd.DataFrame(list(raw_data.items()), columns=["Métrique", "Valeur"])
+        st.dataframe(df_raw, use_container_width=True, hide_index=True)
