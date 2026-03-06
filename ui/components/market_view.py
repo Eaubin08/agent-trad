@@ -42,4 +42,4 @@ def render_market_view(state: MarketState) -> None:
             yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
             showlegend=False,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")

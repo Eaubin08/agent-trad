@@ -398,41 +398,41 @@ def render_agent_deep_dive(state: MarketState, votes: list[AgentVote]) -> None:
     try:
         if chart_type == "rsi":
             if len(state.prices) >= 15:
-                st.plotly_chart(_build_rsi_chart(state), use_container_width=True)
+                st.plotly_chart(_build_rsi_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données en cours (besoin de 15 prix)...")
         elif chart_type == "bollinger":
             if len(state.prices) >= 21:
-                st.plotly_chart(_build_bollinger_chart(state), use_container_width=True)
+                st.plotly_chart(_build_bollinger_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données en cours (besoin de 21 prix)...")
         elif chart_type == "macd":
             if len(state.prices) >= 36:
-                st.plotly_chart(_build_macd_chart(state), use_container_width=True)
+                st.plotly_chart(_build_macd_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données en cours (besoin de 36 prix)...")
         elif chart_type == "volume":
             if len(state.volumes) >= 2:
-                st.plotly_chart(_build_volume_chart(state), use_container_width=True)
+                st.plotly_chart(_build_volume_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données de volume...")
         elif chart_type in ("event_risk", "composite_risk"):
             if len(state.event_risk_scores) >= 2:
-                st.plotly_chart(_build_event_risk_chart(state), use_container_width=True)
+                st.plotly_chart(_build_event_risk_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données de risque...")
         elif chart_type == "breakout":
             if len(state.prices) >= 21:
-                st.plotly_chart(_build_breakout_chart(state), use_container_width=True)
+                st.plotly_chart(_build_breakout_chart(state), width="stretch")
             else:
                 st.info("Accumulation de données en cours (besoin de 21 prix)...")
         elif chart_type == "aggregation":
-            st.plotly_chart(_build_aggregation_chart(votes), use_container_width=True)
+            st.plotly_chart(_build_aggregation_chart(votes), width="stretch")
         elif chart_type == "portfolio":
             st.info("Graphique portfolio : voir la section NAV & Drawdown dans l'historique.")
         else:
             if len(state.prices) >= 2:
-                st.plotly_chart(_build_price_chart(state, "Évolution du Prix"), use_container_width=True)
+                st.plotly_chart(_build_price_chart(state, "Évolution du Prix"), width="stretch")
             else:
                 st.info("Accumulation de données de prix...")
     except Exception as e:

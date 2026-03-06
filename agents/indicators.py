@@ -221,3 +221,54 @@ class MarketState:
         self.btc_reference_prices.append(
             btc_reference_price if btc_reference_price is not None else price
         )
+
+    # ─── Propriétés calculées (équivalents scalaires des Deques) ────────────────
+    @property
+    def price(self) -> float:
+        return self.prices[-1] if self.prices else 0.0
+
+    @property
+    def high(self) -> Optional[float]:
+        return self.highs[-1] if self.highs else None
+
+    @property
+    def low(self) -> Optional[float]:
+        return self.lows[-1] if self.lows else None
+
+    @property
+    def volume(self) -> Optional[float]:
+        return self.volumes[-1] if self.volumes else None
+
+    @property
+    def spread_bps(self) -> float:
+        return self.spreads_bps[-1] if self.spreads_bps else 0.0
+
+    @property
+    def order_book_imbalance(self) -> float:
+        return self.order_book_imbalances[-1] if self.order_book_imbalances else 0.0
+
+    @property
+    def sentiment_score(self) -> float:
+        return self.sentiment_scores[-1] if self.sentiment_scores else 0.0
+
+    @property
+    def event_risk(self) -> float:
+        return self.event_risk_scores[-1] if self.event_risk_scores else 0.0
+
+    @property
+    def rsi(self) -> float:
+        r = rsi(list(self.prices))
+        return r if r is not None else 50.0
+
+    @property
+    def volatility(self) -> float:
+        v = realized_volatility(list(self.prices))
+        return v if v is not None else 0.0
+
+    @property
+    def sma20(self) -> Optional[float]:
+        return sma(list(self.prices), 20)
+
+    @property
+    def sma50(self) -> Optional[float]:
+        return sma(list(self.prices), 50)

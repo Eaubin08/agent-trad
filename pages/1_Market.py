@@ -100,7 +100,7 @@ if history:
     decision_icons = {"ALLOW": "🟢", "HOLD": "🟡", "BLOCK": "🔴"}
     df_last["decision"] = df_last["decision"].map(lambda d: f"{decision_icons.get(d, '⚪')} {d}")
     cols_show = ["cycle", "price", "rsi", "volatility", "decision", "score_s"]
-    st.dataframe(df_last[cols_show], use_container_width=True, hide_index=True)
+    st.dataframe(df_last[cols_show], width="stretch", hide_index=True)
 
 st.divider()
 
@@ -123,4 +123,4 @@ if market:
             "Nb prix historiques": len(market.prices),
         }
         df_raw = pd.DataFrame(list(raw_data.items()), columns=["Métrique", "Valeur"])
-        st.dataframe(df_raw, use_container_width=True, hide_index=True)
+        st.dataframe(df_raw, width="stretch", hide_index=True)

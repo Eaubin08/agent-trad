@@ -53,7 +53,7 @@ with tab1:
         expected_vol = st.slider("Volatilité annuelle (%)", 5, 150, 60, key="sim_vol") / 100
 
         n_simulations = 1000
-        run_sim = st.button("🚀 Lancer la simulation", type="primary", use_container_width=True, key="run_sim1")
+        run_sim = st.button("🚀 Lancer la simulation", type="primary", width="stretch", key="run_sim1")
 
     with col_results:
         if run_sim or "sim_results" in st.session_state:
@@ -180,7 +180,7 @@ with tab2:
     cmp_capital = st.number_input("Capital de départ ($)", 1000, 100_000, 10_000, 1000, key="cmp_capital")
     cmp_days = st.slider("Durée de la simulation (jours)", 30, 365, 90, key="cmp_days")
 
-    if st.button("⚔️ Lancer la comparaison", type="primary", use_container_width=True, key="run_cmp"):
+    if st.button("⚔️ Lancer la comparaison", type="primary", width="stretch", key="run_cmp"):
         def simulate_strategy(name, risk_pct, capital, days, seed=42):
             np.random.seed(seed)
             nav = capital
@@ -269,7 +269,7 @@ with tab2:
                 res_b["name"]: res_b["decisions"]["BLOCK"],
             },
         ])
-        st.dataframe(df_cmp, use_container_width=True, hide_index=True)
+        st.dataframe(df_cmp, width="stretch", hide_index=True)
 
         # Graphique NAV comparatif
         st.markdown("**Évolution de la NAV**")
@@ -429,7 +429,7 @@ with tab3:
         st.markdown(f"- Verrou temporel : **{rec_lock}s**")
         st.markdown(f"- Position size max : **{max(1, 5 - vol_score * 2)}%** du portefeuille")
 
-        if st.button("Appliquer ces paramètres au Guard", use_container_width=True):
+        if st.button("Appliquer ces paramètres au Guard", width="stretch"):
             st.session_state.guard_threshold = rec_threshold
             if "guard" in st.session_state:
                 st.session_state.guard.threshold = rec_threshold

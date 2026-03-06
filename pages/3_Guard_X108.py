@@ -145,6 +145,6 @@ if len(history) >= 2:
     df_dec = df_h[cols_dec].tail(15)[::-1].copy()
     decision_icons = {"ALLOW": "✅ ALLOW", "HOLD": "⏸️ HOLD", "BLOCK": "🚫 BLOCK"}
     df_dec["decision"] = df_dec["decision"].map(lambda d: decision_icons.get(d, d))
-    st.dataframe(df_dec, use_container_width=True, hide_index=True)
+    st.dataframe(df_dec, width="stretch", hide_index=True)
 else:
     st.info("Accumulez des cycles depuis **Home** pour voir l'historique.")

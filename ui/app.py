@@ -77,7 +77,7 @@ if "guard_theta" not in st.session_state:
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.image("https://img.shields.io/badge/ERC--8004-Hackathon-blueviolet?style=for-the-badge", use_container_width=True)
+    st.image("https://img.shields.io/badge/ERC--8004-Hackathon-blueviolet?style=for-the-badge", width="stretch")
     st.subheader("🔮 Obsidia Trustless Agent")
     st.caption("14 agents • Guard X-108 • ERC-8004")
     st.divider()
@@ -137,7 +137,7 @@ with st.sidebar:
             st.session_state.vol_mult = vol_mult
             st.session_state.mock_feed.volatility_multiplier = vol_mult
 
-        if st.button("⚡ Injecter Flash Crash", use_container_width=True, type="primary"):
+        if st.button("⚡ Injecter Flash Crash", width="stretch", type="primary"):
             st.session_state.mock_feed.flash_crash = True
             st.warning("Flash crash injecté ! Il sera appliqué au prochain cycle.")
 
@@ -348,7 +348,7 @@ with left:
         styled = sig_df.style.map(color_signal, subset=["Signal"])
     except AttributeError:
         styled = sig_df.style.applymap(color_signal, subset=["Signal"])
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
     st.subheader("📊 Consensus pondéré")
     agg_df = pd.DataFrame([
@@ -431,7 +431,7 @@ if st.session_state.history:
     if available_cols:
         st.dataframe(
             hist_df[available_cols].tail(15),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -441,12 +441,12 @@ st.divider()
 st.subheader("⚙️ Contrôles")
 ctrl1, ctrl2, ctrl3 = st.columns(3)
 with ctrl1:
-    if st.button("▶️ Cycle suivant", use_container_width=True):
+    if st.button("▶️ Cycle suivant", width="stretch"):
         st.rerun()
 with ctrl2:
     auto = st.toggle("🔄 Auto-refresh (5s)")
 with ctrl3:
-    if st.button("🔁 Reset session", use_container_width=True):
+    if st.button("🔁 Reset session", width="stretch"):
         for key in ["feed", "agents", "guard", "portfolio", "logger", "erc", "signer",
                     "identity", "history", "cycle_count", "trade_count"]:
             if key in st.session_state:

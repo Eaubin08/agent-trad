@@ -104,7 +104,7 @@ with st.sidebar:
             "Volatilité ×", 0.5, 5.0, float(st.session_state.vol_mult), 0.1,
             help="Multiplicateur de volatilité"
         )
-        if st.button("⚡ Injecter Flash Crash", type="primary", use_container_width=True):
+        if st.button("⚡ Injecter Flash Crash", type="primary", width="stretch"):
             st.session_state.flash_crash = True
             st.success("Flash crash injecté !")
 
@@ -120,10 +120,10 @@ with st.sidebar:
     st.divider()
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("▶ Run", use_container_width=True, type="primary"):
+        if st.button("▶ Run", width="stretch", type="primary"):
             st.session_state.running = True
     with col2:
-        if st.button("⏹ Stop", use_container_width=True):
+        if st.button("⏹ Stop", width="stretch"):
             st.session_state.running = False
 
     st.divider()
@@ -287,7 +287,7 @@ with col_right:
         df_display["decision"] = df_display["decision"].map(
             lambda d: f"{decision_icons.get(d, '⚪')} {d}"
         )
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        st.dataframe(df_display, width="stretch", hide_index=True)
     else:
         st.info("Aucune décision encore.")
 

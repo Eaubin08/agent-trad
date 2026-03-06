@@ -97,7 +97,7 @@ if history:
         })
 
     df_proof = pd.DataFrame(proof_rows)
-    st.dataframe(df_proof, use_container_width=True, hide_index=True)
+    st.dataframe(df_proof, width="stretch", hide_index=True)
 
     # Statistiques
     st.divider()
@@ -146,7 +146,7 @@ if history:
             data=csv_data,
             file_name=f"obsidia_proof_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
     with col_exp2:
         json_data = json.dumps(history, indent=2)
@@ -155,7 +155,7 @@ if history:
             data=json_data,
             file_name=f"obsidia_proof_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
         )
 else:
     st.info("Aucune preuve enregistrée. Lancez l'agent depuis la page **Home** (▶ Run) pour générer des preuves.")

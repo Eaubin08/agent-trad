@@ -106,4 +106,4 @@ def render_agent_brain(state: MarketState) -> None:
             row=i, col=1
         )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

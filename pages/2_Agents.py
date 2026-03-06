@@ -79,7 +79,7 @@ def color_signal(val):
     return "color: #d29922"
 
 styled = df_votes.style.map(color_signal, subset=["Signal"])
-st.dataframe(styled, use_container_width=True, hide_index=True)
+st.dataframe(styled, width="stretch", hide_index=True)
 
 st.divider()
 
@@ -144,7 +144,7 @@ if selected and market:
                 if market.sma50:
                     data_rows.append(("SMA 50", f"${market.sma50:,.2f}"))
                 df_data = pd.DataFrame(data_rows, columns=["Indicateur", "Valeur"])
-                st.dataframe(df_data, use_container_width=True, hide_index=True)
+                st.dataframe(df_data, width="stretch", hide_index=True)
             else:
                 st.info("Données de marché non disponibles pour ce cycle.")
 
